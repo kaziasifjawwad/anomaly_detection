@@ -10,12 +10,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 import time
+import joblib  # For saving the model
+
 
 # Load and cache data
 @st.cache_data
 def load_data():
     data = pd.read_csv('final-dataset.csv')
     return data
+
 
 # Function to plot confusion matrix
 def plot_confusion_matrix(cm, title='Confusion Matrix'):
@@ -25,6 +28,7 @@ def plot_confusion_matrix(cm, title='Confusion Matrix'):
     plt.xlabel('Predicted')
     plt.ylabel('Actual')
     st.pyplot(fig)
+
 
 # Function to encode categorical variables
 def encode_categorical(data):
@@ -50,6 +54,7 @@ def encode_categorical(data):
 
     return data
 
+
 # Function to plot transaction type distribution
 def plot_transaction_distribution(data):
     st.subheader("Transaction Type Distribution")
@@ -62,6 +67,34 @@ def plot_transaction_distribution(data):
         title='Transaction Type Distribution'
     )
     st.plotly_chart(fig)
+
+
+# Function to handle data visualizations (for data analysis button)
+def perform_data_analysis(data):
+    st.subheader("Data Analysis and Visualizations")
+
+    # Drop 'transaction_date_time' from the correlation heatmap since it's non-numeric
+    data_corr = data.drop(columns=['transaction_date_time'])
+
+    # Plot a heatmap of correlations
+    st.subheader("Correlation Heatmap")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.heatmap(data_corr.corr(), annot=True, cmap='coolwarm', ax=ax)
+    st.pyplot(fig)
+
+    # Show histogram of numerical columns
+    st.subheader("Distribution of Numerical Columns")
+    num_cols = ['amount', 'fee_amount', 'receiver_credit_amount', 'sender_debit_amount']
+    for col in num_cols:
+        st.subheader(f"Distribution of {col}")
+        fig = px.histogram(data, x=col)
+        st.plotly_chart(fig)
+
+    # Pairplot for relationships between numerical columns
+    st.subheader("Pairplot of Important Variables")
+    sns.pairplot(data[num_cols + ['is_anomaly']].dropna(), hue='is_anomaly')
+    st.pyplot()
+
 
 # Main App
 def main():
@@ -83,76 +116,93 @@ def main():
     X = data[feature_columns].values
     y = data["is_anomaly"].astype(int).values
 
-    # Split data
-    xtrain, xtest, ytrain, ytest = train_test_split(
-        X, y, test_size=0.10, random_state=42
-    )
+    # Sidebar option for Data Analysis
+    st.sidebar.header("Options")
+    action = st.sidebar.selectbox("Select an action", ["Data Analysis", "Train Model"])
 
-    st.sidebar.header("Model Selection")
-    model_choice = st.sidebar.selectbox(
-        "Choose a model",
-        ("Decision Tree", "Logistic Regression", "Random Forest", "SGD Classifier")
-    )
+    # If the user selects Data Analysis
+    if action == "Data Analysis":
+        perform_data_analysis(data)
 
-    # Initialize the selected model
-    if model_choice == "Decision Tree":
-        model = DecisionTreeClassifier()
-    elif model_choice == "Logistic Regression":
-        model = LogisticRegression(max_iter=1000)
-    elif model_choice == "Random Forest":
-        model = RandomForestClassifier()
-    elif model_choice == "SGD Classifier":
-        model = SGDClassifier(loss='log')  # Using logistic regression loss for binary classification
+    # If the user selects Train Model
+    elif action == "Train Model":
+        # Split data
+        xtrain, xtest, ytrain, ytest = train_test_split(
+            X, y, test_size=0.10, random_state=42
+        )
 
-    # Start training button
-    if st.button("Start Training"):
-        st.info("Training started...")
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        # Model Selection in sidebar
+        st.sidebar.header("Model Selection")
+        model_choice = st.sidebar.selectbox(
+            "Choose a model",
+            ("Decision Tree", "Logistic Regression", "Random Forest", "SGD Classifier")
+        )
 
-        # Simulate training with progress bar
-        epochs = 100
-        for epoch in range(epochs):
-            # Simulate some training time
-            time.sleep(0.02)  # Adjust as needed for realism
+        # Initialize the selected model
+        if model_choice == "Decision Tree":
+            model = DecisionTreeClassifier()
+        elif model_choice == "Logistic Regression":
+            model = LogisticRegression(max_iter=1000)
+        elif model_choice == "Random Forest":
+            model = RandomForestClassifier()
+        elif model_choice == "SGD Classifier":
+            model = SGDClassifier(loss='log')  # Using logistic regression loss for binary classification
 
-            # Update progress bar
-            progress = (epoch + 1) / epochs
-            progress_bar.progress(progress)
+        # Train Button
+        if st.button("Start Training"):
+            st.info("Training started...")
+            progress_bar = st.progress(0)
+            status_text = st.empty()
 
-            # Update status text
-            status_text.text(f"Training... {int(progress * 100)}%")
+            # Simulate training with progress bar
+            epochs = 100
+            for epoch in range(epochs):
+                # Simulate some training time
+                time.sleep(0.02)  # Adjust as needed for realism
 
-        # Actual model training
-        with st.spinner('Fitting the model...'):
-            model.fit(xtrain, ytrain)
+                # Update progress bar
+                progress = (epoch + 1) / epochs
+                progress_bar.progress(progress)
 
-        # Predictions
-        ypred = model.predict(xtest)
+                # Update status text
+                status_text.text(f"Training... {int(progress * 100)}%")
 
-        # Accuracy
-        accuracy = accuracy_score(ytest, ypred)
-        st.success(f"{model_choice} Accuracy: {accuracy:.2f}")
+            # Actual model training
+            with st.spinner('Fitting the model...'):
+                model.fit(xtrain, ytrain)
 
-        # Confusion Matrix
-        cm = confusion_matrix(ytest, ypred)
-        plot_confusion_matrix(cm, title=f'{model_choice} Confusion Matrix')
+            # Predictions
+            ypred = model.predict(xtest)
 
-        # Classification Report
-        st.subheader("Classification Report:")
-        report = classification_report(ytest, ypred, output_dict=True)
-        report_df = pd.DataFrame(report).transpose()
-        st.dataframe(report_df)
+            # Accuracy
+            accuracy = accuracy_score(ytest, ypred)
+            st.success(f"{model_choice} Accuracy: {accuracy:.2f}")
 
-        # Plot transaction type distribution
-        plot_transaction_distribution(data)
+            # Confusion Matrix
+            cm = confusion_matrix(ytest, ypred)
+            plot_confusion_matrix(cm, title=f'{model_choice} Confusion Matrix')
 
-        st.balloons()
+            # Classification Report
+            st.subheader("Classification Report:")
+            report = classification_report(ytest, ypred, output_dict=True)
+            report_df = pd.DataFrame(report).transpose()
+            st.dataframe(report_df)
+
+            # Plot transaction type distribution
+            plot_transaction_distribution(data)
+
+            # Save the trained model
+            model_filename = f"{model_choice.lower().replace(' ', '_')}_model.pkl"
+            joblib.dump(model, model_filename)
+            st.success(f"Model saved as {model_filename}")
+
+            st.balloons()
 
     # Option to display raw data
-    if st.checkbox("Show raw data"):
+    if st.sidebar.checkbox("Show raw data"):
         st.subheader("Raw Data")
         st.write(data)
+
 
 if __name__ == "__main__":
     main()
